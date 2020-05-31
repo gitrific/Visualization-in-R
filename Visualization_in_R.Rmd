@@ -1,0 +1,228 @@
+---
+title: "Visualization in R"
+author: "gitrific"
+date: "21 January 2019"
+output: html_document
+---
+
+# Żródlo danych (opis, informacje o zr?dle)
+  Dane do projektu pochodza z Kaggle: https://www.kaggle.com/ramamet4/app-store-apple-data-set-10k-apps/home , sa to statystyki dotyczace sprzedazy aplikacji w App Store.
+  Dane zostaly pobrane z interfejsu iTunes Search API na stronie internetowej Apple Inc. Zostaly takze uzyte narzedzia do web-scrapingu.
+  W zbiorze znajduja sie nastepujace zmienne:
+  
+  "id" : App ID
+  "track_name": App Name
+  "size_bytes": Size (in Bytes)
+  "currency": Currency Type
+  "price": Price amount
+  "rating_count_tot": User Rating counts (for all version)
+  "rating_count_ver": User Rating counts (for current version)
+  "user_rating" : Average User Rating value (for all version)
+  "user_rating_ver": Average User Rating value (for current version)
+  "ver" : Latest version code
+  "cont_rating": Content Rating
+  "prime_genre": Primary Genre
+  "sup_devices.num": Number of supporting devices
+  "ipadSc_urls.num": Number of screenshots showed for display
+  "lang.num": Number of supported languages
+  "vpp_lic": Vpp Device Based Licensing Enabled
+
+  Wlasnosc danych: Copyright (c) 2018 Ramanathan Perumal, dane udostepnione na mocy licencji GPL 2.0, umozliwiajacej zmiane i udostepnianie wykonanych zmian.
+```{r}
+setwd("C:/PiWD")
+df <- read.csv("C:/PiWD/AppleStore.csv", header=TRUE, stringsAsFactors=FALSE)
+```
+# Okreslenie problemu badawczego (stawiane pytania)
+
+Problem badawczy - co wplywa na ocene aplikacji? 
+
+# Analiza wstepna danych (eksploracja)
+
+##Wstepna analiza danych - podsumowanie i wglad w dane
+Analize danych warto rozpoczac od uzycia kilku prostych funkcji - w celu wyczucia danych.
+```{r}
+summary(df)
+head(df, n = 10)
+tail(df, n= 10)
+```
+Bardzo przydatny w tym celu moze byc tez pakiet dplyr
+```{r}
+require(dplyr)
+glimpse(df)
+```
+
+Usune zbedna dana i dodam kolumne z gl?wnym numerem release'u - moze doswiadczenie w tworzeniu aplikacji ma wplyw na ich popularnosc? Moze im dluzej developowana aplikacja, tym lepsza jej percepcja?
+
+```{r}
+df <- df[,-1]
+df$main_release <- sub("\\..*", "", df$ver)
+df$main_release <- sub(".* ", "", df$main_release)
+df$main_release <-  as.numeric(df$main_release)
+
+sum(is.na(df$main_release))
+```
+  Zakladam, ze brak wartosci w 6 przypadkach nie ma az takiego znaczenia.
+#Wizualizacja posiadanych danych
+```{r}
+require(ggplot2)
+
+p <- ggplot(df) + geom_histogram(aes(x=user_rating), fill="blue",binwidth = 0.25) + xlab("Oceny uzytkownikow") +ylab("Licznosc")
+p +  ggtitle("Rozklad ocen w zbiorze aplikacji")
+
+ggplot(df)+ geom_histogram(aes(x=log(rating_count_tot,10)), binwidth = 0.25, fill="green", col = "white") + xlab("Logarytm liczby ocen") +ylab("Licznosc") + ggtitle("Rozklad ocen w zbiorze aplikacji\n Dla zwiekszenia widocznosci zastosowano skale logarytmiczna, w rezultacji rozklad ma duzy wsp?lczynnik skosnosci (asymetria prawostronna)")
+
+ggplot(df)+ geom_histogram(aes(x=sup_devices.num), fill="green", col = "white", stat = "count") + xlab("Liczba wspieranych urzadzen") +ylab("Licznosc")+ ggtitle("Rozklad licznosci w zaleznosci od liczby jezykow w jakich dostepna jest aplikacja")
+
+ggplot(df) + geom_bar(aes(x=reorder(prime_genre,user_rating, function(x)-mean(x)), user_rating), stat = "summary", fun.y="mean", fill="red") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + xlab("Gatunek") + ylab("Srednia ocena") +  ggtitle("Srednia ocen w zaleznosci od gatunku")
+
+ggplot(df) + geom_boxplot(aes(prime_genre, user_rating))+ theme(axis.text.x = element_text(angle = 90, hjust = 1)) + xlab("Gatunek") + ylab("Rozklad ocen")+ ggtitle("Oceny w zaleznosci od gatunku")
+
+
+ggplot(df) + geom_density(aes(x=user_rating), fill="blue",binwidth = 0.25) + xlab("Oceny uzytkownikow") +ylab("Licznosc") + facet_wrap(~cont_rating) + ggtitle("Gestosc ocen w zaleznosci od oceny contentu")
+
+ggplot(df[df$rating_count_ver!=0,]) + geom_point(aes(rating_count_ver/1000, rating_count_tot/1000000, col=cont_rating), alpha = 0.2, size = 2) +xlab("liczba ocen dla aktualnej wersji[tysiace]") + ylab("liczba ocen ogolnie [miliony]") + ylim(0,1.2) + xlim(0,40) + ggtitle("Laczna liczba ocen dla wszystkich wersji a liczba dla wersji aktualnej")
+
+ggplot(df[df$rating_count_ver!=0,]) + geom_line(aes(size_bytes/1000000000, rating_count_tot/1000000, col=cont_rating), alpha = 0.2, size = 2) +xlab("liczba ocen dla aktualnej wersji[tysiace]") + ylab("liczba ocen ogolnie [miliony]") + ylim(0,1.2) + xlim(0,4) + ggtitle("Laczna liczba ocen dla wszystkich wersji a liczba dla wersji aktualnej")
+
+#Chcialabym zaznaczyc, ze w ostatnich dw?ch przypadkach nie oczekiwalam zaleznosci, ale ten zbi?r danych daje male mozliwosci jezeli chodzi o rodzaje wykres?W.
+```
+
+```{r}
+df$mark <- 1
+df$mark[df$user_rating<3.5] <- 0
+
+
+df$sup_devices.num <- as.character(df$sup_devices.num)
+df$ipadSc_urls.num <- as.numeric(df$ipadSc_urls.num)
+df$lang.num <- as.numeric(df$lang.num)
+df$vpp_lic <- as.character(df$vpp_lic)
+```
+
+# Analiza sluzaca realizacji celu (odpowiedzi na postawione pytania)
+
+Podzial zbioru na testowy i treningowy
+```{r}
+df_nrow <- nrow(df)
+tr_part <- 0.80
+set.seed(765)
+
+tr_index <- sample.int(df_nrow, floor(tr_part*df_nrow), replace = FALSE) #losowanie bez zwracania
+
+train <- df[tr_index,]
+test <- df[-tr_index,]
+```
+Tworzenie modelu - liniowego. Pr?ba stworzenia przy uzyciu wszystkich zmiennych (pr?ba wylowienia zmiennych znaczacych)
+```{r}
+linear <- lm(mark~ size_bytes+price+rating_count_tot+prime_genre+ipadSc_urls.num+lang.num +vpp_lic+main_release,train)
+
+summary(linear)
+```
+
+```{r}
+plot(linear)
+hist(linear$residuals, xlab = "Reszty", ylab = "Czestotliwosc", main = "Rozklad reszt")
+
+```
+
+Aplikacja danych 
+```{r}
+predict_linear <- predict(linear, newdata = test)
+
+summary(predict_linear)
+
+predict_m1 <- predict_linear
+
+predict_m1[predict_linear>=0.5] <- 1
+predict_m1[predict_linear<0.5] <- 0
+
+
+library(caret)
+conf_matrix_ml<- confusionMatrix(factor(predict_m1, levels=c(1,0)), factor(test$mark, levels=c(1,0)))
+
+conf_matrix_ml
+```
+  W pierwszej iteracji projektu (na innym zestawie danych), pojawil sie w tym miejscu warning, kt?ry wydaje mi sie, ze warto go zaadresowac. Warning wynikal z faktu, ze nie r?wno podzielono zmienne kategoryczne miedzy zestaw testowy i treningowy. Funkcje glm() i predict() rzutuja zmienne typu character na factor - jezeli nie zostana one podzielone r?wno pomiedzy zestawy treningowe i testowe. W momencie stosowania funkcji predict() tworza sie nowe poziomy factora, kt?re nie braly udzialu w tworzeniu modelu, w zwiazku z czym funkcja predict nie wie w jaki spos?b je potraktowac i jaki maja one wplyw na wynik, co rezultuje bledem i zakonczeniem dzialania skryptu. Technicznie moze to tez wynikac z faktu, ze funkcje glm() i predict() radza sobie ze zmiennymi typu factor tworzac dla kazdego poziomu dodatkowe kolumny (czyli jezeli mamy factor o 3 poziomach tworza sie 3 kolumny w zasadzie typu boolowskiego, majace 1 dla kolumny odpowiadajacej wartosci factora w danym wierszu, 0 w pozostalych) - jest to problematyczne, ale mysle, ze jest to jeden z problem?w jaki mozna by zlikwidowac tworzac kilka podzial?w na zbiory terningowe i testowe i wyb?r najlepszego (najciekawsza dla mnie metoda jest podzial kroczacy - tzn. jezeli biore 20 % do testowego,to nalezaloby stworzyc 5 zbior?w testowych, kt?rych sumach bylaby r?wna calosci danych.)
+
+W tym wypadku podejrzewam, ze ten model moze byc az zbyt dobrze dopasowany do danych treningowych i nie sprawdzic sie na danych testowych.
+
+```{r}
+library(pROC)
+
+logistic <- glm(data = train, mark~ size_bytes+price+rating_count_tot+prime_genre+ipadSc_urls.num+lang.num +vpp_lic+main_release, family = "binomial")
+
+summary(logistic)
+
+#plot(logistic)
+#hist(logistic$residuals, xlab = "Reszty", ylab = "Czestotliwosc", main = "Rozklad reszt")
+
+predict_logistic <- predict(logistic, newdata = test, type = "response")
+
+summary(predict_logistic)
+
+roc_logistic <- roc(as.numeric(test$mark), predict_logistic, direction="<")
+
+plot(roc_logistic$sensitivities, roc_logistic$thresholds, type = "l", col="green", xlab = "Sensitivites/Specifities", ylab = "Thresholds")
+lines(roc_logistic$specificities, roc_logistic$thresholds, col="red")
+legend(0.7, 0.4, legend=c("Sensitivity", "Specifity"),
+       col=c("green", "red"), lty=1, cex=0.8,
+       text.font=4)
+
+threshold <- mean(roc_logistic$thresholds[abs(roc_logistic$sensitivities-roc_logistic$specificities)<=0.005])
+
+predict_m2 <- predict_logistic
+
+predict_m2[predict_logistic>=threshold] <- 1
+predict_m2[predict_logistic<threshold] <- 0
+
+conf_matrix_mlg<- confusionMatrix(factor(predict_m2, levels=c(1,0)), factor(test$mark, levels=c(1,0)))
+
+conf_matrix_mlg
+```
+Warning "fitted probabilities numerically 0 or 1 occurred" oznacza, ze mamy do czynienia ze zjawiskiem "Perfect separation", kt?re skutkuje przeskalownymi wsp?lczynnikami. Na potrzeby tego projektu pomine to, jednak zwr?ce uwage, ze w rzeczywistosci moznaby zaadresowac ten problem poprzez wprowadzenie penalizacji. Innym sposobem jest korzystanie np. z analizy Bayesowskiej.
+
+Drzewo decyzyjne
+```{r}
+library(rpart)
+library(rpart.plot)
+
+tree <- rpart(mark~ size_bytes+price+rating_count_tot+prime_genre+ipadSc_urls.num+lang.num +vpp_lic+main_release, data=train)
+
+summary(tree)
+tree
+printcp(tree)
+
+predict_tree <- predict(tree, newdata = test, type = "vector")
+
+prp(tree)
+title("Drzewo decyzyjne")
+
+plotcp(tree, cex.lab = 1.1, cex.axis = 1.1)
+```
+
+Krzywe ROC
+```{r}
+library(pROC)
+
+roc_linear <- roc(as.numeric(test$mark), predict_linear, direction="<")
+#roc_logistic <- roc(as.numeric(test$mark), predict_logistic, direction="<")
+roc_tree <- roc(as.numeric(test$mark), predict_tree, direction = "<")
+
+roc_linear
+roc_logistic
+roc_tree
+
+plot(roc_linear,col="red")
+title("Krzywa ROC")
+lines(roc_logistic, col="green")
+lines(roc_tree, col = "blue")
+legend(0.2, 0.35, legend=c("Liniowy", "Regresja logistyczna", "Drzewo decyzyjne"),
+       col=c("red", "green" ,"blue"), lty=1, cex=0.8,
+       title="Modele", text.font=4)
+```
+
+# Podsumowanie
+  W ten spos?b powstale modele nie jest najlepszy, co zapewne wynika z stosunkowo niewielkiej liczby obserwacji w zbiorze danych. Obiecujacy jest fakt, ze przy juz ok 8k wybranych aplikacji udalo sie w prosty spos?b uzyskac ponad 70% specifity dla zwyklego modelu liniowego.
+  Jak sie okazalo, zmienne takie jak np. gl?wny release aplikacji nie mialy wplywu na model. Duze znaczenie mialy w modelach liniowym i regresji logstycznej liczba wspieranych jezyk?w, liczba zrzut?w ekranu dostepna na AppStore, fakt, ze aplikacja wspiera licencje Apple VPP (Apple Volume Purchase Program - umozliwiajaca zakup duzej ilosci aplikacji przez przedsiebiorce na korzystniejszych warunkach finansowych) oraz gl?wny gatunek, do kt?rego mozna zaliczyc aplikacje.
+  W przypadku modelu drzewa decyzyjnego znaczenie miala w zasadzie tylko liczba ocen oraz gatunek, udalo sie takze w tym modelu uzyskac lepsze rezultaty.
+  Dalszym krokiem w analizie moglaby byc pr?ba wprowadzenia szeregu czasowego (np. poprzez okresowe zbieranie danych dot. tych samych aplikacji) lub glebsza analiza np. rozkladu upodoban w zaleznosci od polozenia geograficznego uzytkownik?w lub moze kraju pochodzenia developera aplikacji, w zaleznosci od dostepnosci danych. Do tego typu analiz potrzebne by byly dodatkowe dane.
+  Kolejnym pomyslem na udoskonalenie modelu mogloby byc wprowadzenie zmiennych wyzszego rzedu, np poprzez dodanie jako zmiennych do tworzenia modelu iloczynu dw?ch zmiennych liniowych lub kwadrat?w czy poteg wyzszego rzedu, jednakze ze wzgledu na niewielka w moim pojeciu wartosc biznesowa w tym przypadku (i niewielki wplyw na model w wykonanych pr?bach), nie mialo to w tym wypadku wiekszego sensu, ze wzgledu na to, ze zaciemnialo obraz. Dodatkowo zwiekszajac liczbe zmiennych, ryzykujemy zmniejszenie uniwersalnosci modelu i doprowadzenie do sytuacji, w kt?rej bedzie on aplikowalny jedynie do danych treningowych.
